@@ -114,6 +114,11 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .mk.ew{color:#c58bff}.mk.ew i{border-color:#c58bff}
 #mini{position:absolute;right:calc(env(safe-area-inset-right,0px) + 14px);top:calc(env(safe-area-inset-top,0px) + 58px);width:clamp(90px,15vw,140px);height:clamp(90px,15vw,140px);border:1px solid rgba(255,255,255,.5);background:rgba(0,0,0,.35)}
 .lowbat{color:var(--danger)}
+#thrG{position:absolute;left:calc(env(safe-area-inset-left,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 64px);width:12px;height:min(32vh,140px);border:1px solid rgba(255,255,255,.7);background:rgba(0,0,0,.35)}
+#thrG i{position:absolute;left:0;right:0;bottom:0;background:var(--accent)}
+#thrG:after{content:"";position:absolute;left:-5px;right:-5px;top:50%;border-top:1px solid #fff}
+#thrG span{position:absolute;left:18px;bottom:0;font-size:11px}
+.screen{overscroll-behavior:contain}
 #hud.obs .osd,#hud.obs #mini,#hud.obs #marks,#hud.obs #warn{display:none}
 #hud.obs:before{content:"● REC  ОБЪЕКТИВНЫЙ КОНТРОЛЬ · ВИД С РАЗВЕДЧИКА";position:absolute;left:calc(env(safe-area-inset-left,0px) + 14px);top:calc(env(safe-area-inset-top,0px) + 12px);font-size:13px;color:#ff5a4a}
 /* tank hud */
@@ -151,6 +156,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   <div id="cross"></div>
   <div id="warn"></div>
   <div id="big"></div><div id="sub"></div>
+  <div id="thrG" hidden><i></i><span>ГАЗ</span></div>
   <div class="osd bl" id="oBL"></div>
   <div class="osd bc" id="oBC"></div>
   <div class="osd br" id="oBR"></div>

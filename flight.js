@@ -24,10 +24,11 @@ const Flight = {
     this.twr = def.type === 'quad' ? def.twr * dry / (dry + w) : 1;
     this.vmax = def.type === 'quad' ? def.speed * (0.72 + 0.28 * this.twr / def.twr) : def.type === 'wing' ? def.speed * (1 - w / (def.payload * 6)) : def.speed;
     this.acro = def.type === 'quad' && Save.d.mode === 'acro';
-    Input.L.keepY = this.acro; Input.L.y = this.acro ? clamp(2 / this.twr - 1, -1, 1) : 0; Input.L.x = 0;
-    this.lastIn = {lx:0, ly:Input.L.y, rx:0, ry:0};
+    Input.L.keepY = this.acro; Input.L.y = 0; Input.L.x = 0;
+    this.lastIn = {lx:0, ly:0, rx:0, ry:0};
     UI.setFilter(this.map.night ? 'thermal' : '');
-    UI.big(`ВЫЛЕТ ${this.used}/${this.sorties}`, `${def.name} · ${def.type === 'missile' ? 'ракета' : this.wh.name}`, 1.6);
+    const hint = this.acro && this.used === 1 ? '\nАКРО: левый стик — газ (центр = висение) и поворот, правый — наклон и кувырки' : '';
+    UI.big(`ВЫЛЕТ ${this.used}/${this.sorties}`, `${def.name} · ${def.type === 'missile' ? 'ракета' : this.wh.name}${hint}`, hint ? 4 : 1.6);
     Snd.click();
   },
   // ---------- per-frame ----------
@@ -70,7 +71,7 @@ const Flight = {
     CAM.position.copy(this.pos);
     const shk = FX.shake * 0.02;
     CAM.quaternion.copy(this.q);
-    const up = def.type === 'quad' ? (this.acro ? 0.42 : 0.14) : 0;
+    const up = def.type === 'quad' ? (this.acro ? 0.38 : 0.14) : 0;
     CAM.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(up + rnd(-shk, shk) + (def.type === 'quad' ? Math.sin(this.t * 37) * 0.002 * thr : 0), rnd(-shk, shk), 0)));
     if (CAM.fov !== 82) { CAM.fov = 82; CAM.updateProjectionMatrix(); }
     Snd.setMotor(true, thr, def.type);
@@ -90,10 +91,15 @@ const Flight = {
       if (inp.ly < -0.9) thrust *= 0.5;
       thr = thrust / (G * this.twr);
     } else {
-      const rate = 3.2 + ag * 4.5;
-      const dq = new THREE.Quaternion().setFromEuler(new THREE.Euler(-inp.ry * rate * dt, -inp.lx * rate * 0.8 * dt, -inp.rx * rate * dt, 'YXZ'));
-      this.q.multiply(dq).normalize();
-      thr = (inp.ly + 1) / 2; thrust = thr * G * this.twr;
+      // Acro (rate mode): sticks set rotation speed in the drone's own axes, nothing self-levels — flips and rolls are possible.
+      // Rates with expo like Betaflight: precise near centre, fast at full stick.
+      const maxR = 5.5 + ag * 3.5, expo = 0.55, rc = x => x * (1 - expo) + x * x * x * expo;
+      const w = new THREE.Vector3(-rc(inp.ry) * maxR, -rc(inp.lx) * 3.6, -rc(inp.rx) * maxR), ang = w.length() * dt;
+      if (ang > 1e-6) this.q.multiply(new THREE.Quaternion().setFromAxisAngle(w.normalize(), ang)).normalize();
+      // throttle: stick centre = hover, top = full power, bottom = motors idle
+      const hover = clamp(1 / this.twr, 0.15, 0.85);
+      thr = inp.ly >= 0 ? hover + (1 - hover) * inp.ly : hover * (1 + inp.ly);
+      thrust = thr * G * this.twr;
       const e = new THREE.Euler().setFromQuaternion(this.q, 'YXZ'); this.yaw = e.y; this.pitch = e.x; this.roll = e.z;
     }
     thrust *= bat;

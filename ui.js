@@ -109,8 +109,8 @@ const UI = {
     $('scrSettings').innerHTML = `<div class="wrap">
       <div class="top"><button class="btn ghost" id="sBack">← Назад</button><h2>Настройки</h2></div>
       <div class="section-h">Режим полёта квадрокоптера</div>
-      <div class="row"><button class="chip ${D.mode === 'angle' ? 'on' : ''}" data-m="angle">Стабилизация (Angle)</button><button class="chip ${D.mode === 'acro' ? 'on' : ''}" data-m="acro">Акро (как у пилотов)</button></div>
-      <p class="note">Стабилизация: отпустил стик — дрон выравнивается и висит. Акро: дрон держит угол, газ не возвращается в центр, камера наклонена на 25°. Так летают настоящие FPV-пилоты.</p>
+      <div class="row"><button class="chip ${D.mode === 'acro' ? 'on' : ''}" data-m="acro">Акро — настоящий FPV</button><button class="chip ${D.mode === 'angle' ? 'on' : ''}" data-m="angle">Стабилизация (для новичков)</button></div>
+      <p class="note">Акро: левый стик — газ моторов (остаётся там, где отпустил) и поворот, правый — наклон и кувырки. Дрон сам не выравнивается, можно делать флипы и пикировать камерой вниз. Стабилизация: отпустил стик — дрон выравнивается и висит.</p>
       <div class="section-h">Чувствительность стиков: <span id="sensV">${D.sens.toFixed(1)}</span></div>
       <input type="range" id="sens" min="0.5" max="1.6" step="0.1" value="${D.sens}" style="width:100%;max-width:420px">
       <div class="section-h">Ракеты и крылья</div>
@@ -155,7 +155,11 @@ const UI = {
   pause(){
     if (!this.mode) return; this.paused = true; resetSticks(); Snd.setMotor(false, 0); Snd.setStatic(0); Snd.setEngine(false, 0);
     $('scrPause').innerHTML = `<div class="wrap" style="max-width:420px;padding-top:6vh"><h2 class="res-big">Пауза</h2>
-      <button class="btn primary" id="zGo">Продолжить</button><button class="btn" id="zRe">Начать заново</button><button class="btn" id="zSet">Настройки</button><button class="btn ghost" id="zOut">Выйти в меню</button></div>`;
+      <button class="btn primary" id="zGo">Продолжить</button>
+      <div class="row"><span class="note">Полёт дрона:</span><button class="chip ${Save.d.mode === 'acro' ? 'on' : ''}" id="zAcro">Акро (FPV)</button><button class="chip ${Save.d.mode === 'angle' ? 'on' : ''}" id="zAngle">Стабилизация</button></div>
+      <button class="btn" id="zRe">Начать заново</button><button class="btn" id="zSet">Настройки</button><button class="btn ghost" id="zOut">Выйти в меню</button></div>`;
+    const setMode = m => { Save.d.mode = m; Save.save(); if (this.mode !== 'tank' && Flight.def && Flight.def.type === 'quad' && Flight.phase === 'fly') { Flight.acro = m === 'acro'; Input.L.keepY = Flight.acro; Input.L.y = 0; if (!Flight.acro) { const e = new THREE.Euler().setFromQuaternion(Flight.q, 'YXZ'); Flight.yaw = e.y; Flight.pitch = e.x; Flight.roll = e.z; } } this.pause(); };
+    $('zAcro').onclick = () => setMode('acro'); $('zAngle').onclick = () => setMode('angle');
     $('zGo').onclick = () => { this.paused = false; this.show(null); };
     $('zRe').onclick = () => this.startGame(this.lastStart.mode, this.lastStart.map);
     $('zSet').onclick = () => this.settings('scrPause');
@@ -241,6 +245,8 @@ const UI = {
       `<span class="${F.battery < 0.2 ? 'lowbat' : ''}">${volt.toFixed(1)}V ${Math.round(F.battery * 100)}%</span><br>${Math.round(F.mah)} mAh<br>${def.type === 'wing' ? 'КРЫЛО' : F.acro ? 'ACRO' : 'ANGLE'}`;
     $('oTR').innerHTML = def.fiber ? `ВОЛОКНО ${Math.round(F.cable || 0)}/${def.range}м` : def.wire ? `ПРОВОД ${Math.round(F.cable || 0)}м` : `LQ ${lq}%<br>RSSI -${rssi}dBm`;
     $('oBL').innerHTML = `ALT ${Math.round(agl)}м<br>THR ${Math.round((F.thr || 0) * 100)}%`;
+    const tg = $('thrG'); tg.hidden = !(def.type === 'quad' && F.acro);
+    if (!tg.hidden) { tg.firstChild.style.height = Math.round((Input.L.y + 1) * 50) + '%'; }
     $('oBR').innerHTML = `${Math.round(spd)} км/ч`;
     $('oBC').innerHTML = `⌂ ${Math.round(home)}м · ${this.fmtT(F.t || 0)}`;
     const heading = -(F.yaw || 0);
@@ -342,7 +348,8 @@ addEventListener('blur', resetSticks);
 addEventListener('pointerdown', stickDown, {passive:false});
 addEventListener('pointermove', stickMove, {passive:false});
 addEventListener('pointerup', stickUp); addEventListener('pointercancel', stickUp);
-document.addEventListener('touchmove', e => { if (UI.running) e.preventDefault(); }, {passive:false});
+// block page bounce during flight, but let menus (settings, pause) scroll
+document.addEventListener('touchmove', e => { if (UI.running && !(e.target.closest && e.target.closest('.screen'))) e.preventDefault(); }, {passive:false});
 document.addEventListener('gesturestart', e => e.preventDefault());
 
 // ---------- keyboard ----------
