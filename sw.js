@@ -1,5 +1,5 @@
 // Offline cache: the whole game is saved on the phone on first open
-const CACHE = 'fpv-kamikaze-v4';
+const CACHE = 'fpv-kamikaze-v5';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
   'lib/three.min.js', 'data.js', 'audio.js', 'world.js', 'fx.js', 'flight.js', 'tank.js', 'ui.js',
@@ -11,7 +11,7 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(f => new Request(f, {cache:'reload'})))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
