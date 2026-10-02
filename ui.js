@@ -22,14 +22,16 @@ const UI = {
       <p class="tag">Выбери дрон или ракету, подвесь боевую часть и пройди РЭБ и зенитки до цели. 10 карт, 11 аппаратов и режим танка.</p></div>
       <div class="menu-grid">
         <button class="mbtn main" id="mDrone"><b>Миссии на дронах</b><small>Звёзд: ${sm} из 30 · ${byId(DRONES, Save.d.drone).name}</small></button>
+        <button class="mbtn" id="mTrain"><b>Тренировка</b><small>Пролети через 10 ворот на время${Save.d.bestGate ? ' · рекорд ' + Save.d.bestGate.toFixed(1) + ' с' : ''}</small></button>
         <button class="mbtn" id="mTank"><b>Режим танка</b><small>Звёзд: ${st} из 30 · отбейся от FPV</small></button>
         <button class="mbtn" id="mHangar"><b>Ангар</b><small>Дроны, ракеты, БЧ и танки</small></button>
-        <button class="mbtn" id="mSet"><b>Настройки</b><small>Режим полёта: ${Save.d.mode === 'acro' ? 'Акро' : 'Стабилизация'}</small></button>
+        <button class="mbtn" id="mSet"><b>Настройки</b><small>Режим полёта: ${{fpv:'Простой FPV', acro:'Акро', angle:'Стабилизация'}[Save.d.mode]}</small></button>
       </div>
       <p class="note">Управление: левый стик — газ и поворот, правый — наклон дрона (или прицел танка). На компьютере: WASD + стрелки, пробел — огонь, F — пулемёт, E — РЭБ, Esc — пауза.</p>
     </div>`;
     $('mDrone').onclick = () => { Snd.init(); this.maps('drone'); };
     $('mTank').onclick = () => { Snd.init(); this.maps('tank'); };
+    $('mTrain').onclick = () => { Snd.init(); this.maps('train'); };
     $('mHangar').onclick = () => { Snd.init(); this.hangar(); };
     $('mSet').onclick = () => this.settings('scrMenu');
     $('scrMenu').style.background = 'linear-gradient(90deg,rgba(15,18,13,.94) 0%,rgba(15,18,13,.72) 55%,rgba(15,18,13,.35) 100%)';
@@ -88,16 +90,16 @@ const UI = {
   maps(mode){
     this.sel.mapMode = mode; const D = Save.d, tank = mode === 'tank';
     const cur = tank ? byId(TANKS, D.tank) : byId(DRONES, D.drone), wh = !tank && cur.type !== 'missile' ? byId(WARHEADS, D.warhead) : null;
-    const stars = tank ? D.tstars : D.stars;
+    const train = mode === 'train', stars = tank ? D.tstars : train ? {} : D.stars;
     $('scrMaps').innerHTML = `<div class="wrap">
-      <div class="top"><button class="btn ghost" id="pBack">← Меню</button><h2>${tank ? 'Режим танка' : 'Миссии на дронах'}</h2>${this.coins()}</div>
+      <div class="top"><button class="btn ghost" id="pBack">← Меню</button><h2>${tank ? 'Режим танка' : train ? 'Тренировка: ворота' : 'Миссии на дронах'}</h2>${this.coins()}</div>
       <div class="card" style="flex-direction:row;align-items:center;flex-wrap:wrap;gap:12px"><div style="flex:1;min-width:180px"><span class="kind">${tank ? 'танк' : 'аппарат'}</span><h3>${cur.name}</h3><p>${wh ? 'БЧ: ' + wh.name + ' · ' + wh.weight + ' кг' : tank ? 'Броня ' + cur.hp + ' · РЭБ ' + cur.ew + ' с' : 'Встроенная БЧ'}</p></div>
       <button class="btn" id="pChange">Сменить</button></div>
       <div class="section-h">Выбери карту</div>
       <div class="cards">${MAPS.map(m => `<button class="card" data-map="${m.id}">
         <div class="mapthumb" style="background:linear-gradient(180deg,${hex(m.sky)} 0%,${hex(m.fog)} 48%,${rgb(m.g2)} 50%,${rgb(m.g1)} 100%)"></div>
         <div class="row" style="justify-content:space-between"><h3>${m.name}</h3><span class="diff">${'★'.repeat(stars[m.id] || 0)}${'☆'.repeat(3 - (stars[m.id] || 0))}</span></div>
-        <p>${m.desc}</p><span class="diff">Сложность ${'▮'.repeat(m.diff)}${'▯'.repeat(5 - m.diff)}${tank ? '' : ' · вылетов: ' + m.sorties}</span></button>`).join('')}</div></div>`;
+        <p>${m.desc}</p><span class="diff">Сложность ${'▮'.repeat(m.diff)}${'▯'.repeat(5 - m.diff)}${tank || train ? '' : ' · вылетов: ' + m.sorties}</span></button>`).join('')}</div></div>`;
     $('pBack').onclick = () => this.menu();
     $('pChange').onclick = () => { this.sel.tab = tank ? 'tank' : byId(DRONES, D.drone).type; this.hangar('maps'); };
     $('scrMaps').querySelectorAll('[data-map]').forEach(b => b.onclick = () => this.startGame(mode, byId(MAPS, b.dataset.map)));
@@ -109,12 +111,12 @@ const UI = {
     $('scrSettings').innerHTML = `<div class="wrap">
       <div class="top"><button class="btn ghost" id="sBack">← Назад</button><h2>Настройки</h2></div>
       <div class="section-h">Режим полёта квадрокоптера</div>
-      <div class="row"><button class="chip ${D.mode === 'acro' ? 'on' : ''}" data-m="acro">Акро — настоящий FPV</button><button class="chip ${D.mode === 'angle' ? 'on' : ''}" data-m="angle">Стабилизация (для новичков)</button></div>
-      <p class="note">Акро: левый стик — газ моторов (остаётся там, где отпустил) и поворот, правый — наклон и кувырки. Дрон сам не выравнивается, можно делать флипы и пикировать камерой вниз. Стабилизация: отпустил стик — дрон выравнивается и висит.</p>
+      <div class="row"><button class="chip ${D.mode === 'fpv' ? 'on' : ''}" data-m="fpv">Простой FPV</button><button class="chip ${D.mode === 'acro' ? 'on' : ''}" data-m="acro">Акро (реальная физика)</button><button class="chip ${D.mode === 'angle' ? 'on' : ''}" data-m="angle">Стабилизация</button></div>
+      <p class="note">Простой FPV: дрон летит туда, куда смотрит камера. Левый стик вверх — мощность моторов (внизу дрон висит), вбок — поворот. Правый стик — направление, можно делать кувырки. Акро: как настоящий дрон, наклон и газ раздельно, нужна тренировка. Стабилизация: отпустил стик — дрон выравнивается и висит.</p>
       <div class="section-h">Чувствительность стиков: <span id="sensV">${D.sens.toFixed(1)}</span></div>
       <input type="range" id="sens" min="0.5" max="1.6" step="0.1" value="${D.sens}" style="width:100%;max-width:420px">
-      <div class="section-h">Ракеты и крылья</div>
-      <div class="row"><button class="chip ${!D.invert ? 'on' : ''}" data-i="0">Стик вверх — летит вверх</button><button class="chip ${D.invert ? 'on' : ''}" data-i="1">Стик вверх — нос вниз (как у пилотов)</button></div>
+      <div class="section-h">Правый стик вверх (все дроны и ракеты)</div>
+      <div class="row"><button class="chip ${!D.invert ? 'on' : ''}" data-i="0">Нос вверх — летит вверх</button><button class="chip ${D.invert ? 'on' : ''}" data-i="1">Нос вниз — летит вперёд (как у FPV-пилотов)</button></div>
       <div class="section-h">Звук</div>
       <div class="row"><button class="chip ${D.sound ? 'on' : ''}" data-s="1">Вкл</button><button class="chip ${!D.sound ? 'on' : ''}" data-s="0">Выкл</button></div>
       <div class="section-h">Прогресс</div>
@@ -137,11 +139,11 @@ const UI = {
     setTimeout(() => {
       this.show(null); this.mode = mode; this.running = true; this.paused = false;
       if (mode === 'tank') Tank.start(map, byId(TANKS, Save.d.tank));
-      else { this.fixWarhead(); Flight.start(map, byId(DRONES, Save.d.drone), byId(WARHEADS, Save.d.warhead)); }
+      else { this.fixWarhead(); Flight.start(map, byId(DRONES, Save.d.drone), byId(WARHEADS, Save.d.warhead), {train:mode === 'train'}); }
       const fl = mode !== 'tank';
       $('hud').hidden = false; $('ctrls').hidden = false; $('noise').hidden = !fl; $('scan').hidden = !fl; $('vign').hidden = false; $('cross').hidden = false;
       this.tankButtons(!fl); $('loading').hidden = true; this.checkRot();
-      $('cross').style.left = $('cross').style.top = ''; $('vign').style.background = '';
+      $('cross').style.left = $('cross').style.top = ''; $('vign').style.background = ''; $('thrG').hidden = true; $('marks').innerHTML = mode === 'train' ? '' : $('marks').innerHTML;
       try { navigator.wakeLock && navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
     }, 30);
   },
@@ -156,11 +158,14 @@ const UI = {
     if (!this.mode) return; this.paused = true; resetSticks(); Snd.setMotor(false, 0); Snd.setStatic(0); Snd.setEngine(false, 0);
     $('scrPause').innerHTML = `<div class="wrap" style="max-width:420px;padding-top:6vh"><h2 class="res-big">Пауза</h2>
       <button class="btn primary" id="zGo">Продолжить</button>
-      <div class="row"><span class="note">Полёт дрона:</span><button class="chip ${Save.d.mode === 'acro' ? 'on' : ''}" id="zAcro">Акро (FPV)</button><button class="chip ${Save.d.mode === 'angle' ? 'on' : ''}" id="zAngle">Стабилизация</button></div>
+      <div class="row"><span class="note">Полёт дрона:</span><button class="chip ${Save.d.mode === 'fpv' ? 'on' : ''}" id="zFpv">Простой FPV</button><button class="chip ${Save.d.mode === 'acro' ? 'on' : ''}" id="zAcro">Акро</button><button class="chip ${Save.d.mode === 'angle' ? 'on' : ''}" id="zAngle">Стабилизация</button></div>
+      <div class="row"><span class="note">Правый стик вверх:</span><button class="chip ${!Save.d.invert ? 'on' : ''}" id="zUp">Нос вверх</button><button class="chip ${Save.d.invert ? 'on' : ''}" id="zDown">Нос вниз</button></div>
       <button class="btn" id="zRe">Начать заново</button><button class="btn" id="zSet">Настройки</button><button class="btn ghost" id="zOut">Выйти в меню</button></div>`;
-    const setMode = m => { Save.d.mode = m; Save.save(); if (this.mode !== 'tank' && Flight.def && Flight.def.type === 'quad' && Flight.phase === 'fly') { Flight.acro = m === 'acro'; Input.L.keepY = Flight.acro; Input.L.y = 0; if (!Flight.acro) { const e = new THREE.Euler().setFromQuaternion(Flight.q, 'YXZ'); Flight.yaw = e.y; Flight.pitch = e.x; Flight.roll = e.z; } } this.pause(); };
-    $('zAcro').onclick = () => setMode('acro'); $('zAngle').onclick = () => setMode('angle');
-    $('zGo').onclick = () => { this.paused = false; this.show(null); };
+    const setMode = m => { Save.d.mode = m; Save.save(); if (this.mode !== 'tank' && Flight.def && Flight.q) Flight.setQuadMode(m); this.pause(); };
+    $('zFpv').onclick = () => setMode('fpv'); $('zAcro').onclick = () => setMode('acro'); $('zAngle').onclick = () => setMode('angle');
+    $('zUp').onclick = () => { Save.d.invert = false; Save.save(); this.pause(); };
+    $('zDown').onclick = () => { Save.d.invert = true; Save.save(); this.pause(); };
+    $('zGo').onclick = () => { Snd.init(); this.paused = false; this.show(null); };
     $('zRe').onclick = () => this.startGame(this.lastStart.mode, this.lastStart.map);
     $('zSet').onclick = () => this.settings('scrPause');
     $('zOut').onclick = () => this.menu();
@@ -208,7 +213,7 @@ const UI = {
       const mx = 70 + v.x * s, my = 70 + v.z * s;
       if (v.type === 'ew' && v.alive) { x.strokeStyle = 'rgba(197,139,255,0.8)'; x.beginPath(); x.arc(mx, my, 260 * s, 0, 7); x.stroke(); }
       if (v.type === 'aa' && v.alive) { x.strokeStyle = 'rgba(255,170,60,0.6)'; x.beginPath(); x.arc(mx, my, 430 * s, 0, 7); x.stroke(); }
-      x.fillStyle = v.alive ? (v.type === 'ew' ? '#c58bff' : v.type === 'aa' ? '#ffaa3c' : '#ff4d3a') : '#777';
+      x.fillStyle = v.type === 'next' ? '#5dff7a' : v.type === 'gate' ? (v.alive ? '#ff9a3c' : '#666') : v.alive ? (v.type === 'ew' ? '#c58bff' : v.type === 'aa' ? '#ffaa3c' : '#ff4d3a') : '#777';
       x.fillRect(mx - 2.5, my - 2.5, 5, 5);
     }
     if (extra) { x.fillStyle = '#ff4d3a'; for (const d of extra) if (d.alive) { x.beginPath(); x.arc(70 + d.pos.x * s, 70 + d.pos.z * s, 2, 0, 7); x.fill(); } }
@@ -242,7 +247,7 @@ const UI = {
     const volt = 6 * (3.3 + 0.9 * F.battery) - (F.thr || 0) * 0.9;
     const lq = Math.round((1 - F.noise) * 100), rssi = Math.round(40 + F.noise * 60);
     $('oTL').innerHTML = missile ? `ТОПЛИВО ${Math.max(0, F.battery * def.battery).toFixed(1)}с<br>РАКЕТА` :
-      `<span class="${F.battery < 0.2 ? 'lowbat' : ''}">${volt.toFixed(1)}V ${Math.round(F.battery * 100)}%</span><br>${Math.round(F.mah)} mAh<br>${def.type === 'wing' ? 'КРЫЛО' : F.acro ? 'ACRO' : 'ANGLE'}`;
+      `<span class="${F.battery < 0.2 ? 'lowbat' : ''}">${volt.toFixed(1)}V ${Math.round(F.battery * 100)}%</span><br>${Math.round(F.mah)} mAh<br>${def.type === 'wing' ? 'КРЫЛО' : F.easy ? 'FPV' : F.acro ? 'ACRO' : 'ANGLE'}`;
     $('oTR').innerHTML = def.fiber ? `ВОЛОКНО ${Math.round(F.cable || 0)}/${def.range}м` : def.wire ? `ПРОВОД ${Math.round(F.cable || 0)}м` : `LQ ${lq}%<br>RSSI -${rssi}dBm`;
     $('oBL').innerHTML = `ALT ${Math.round(agl)}м<br>THR ${Math.round((F.thr || 0) * 100)}%`;
     const tg = $('thrG'); tg.hidden = !(def.type === 'quad' && F.acro);
@@ -250,6 +255,7 @@ const UI = {
     $('oBR').innerHTML = `${Math.round(spd)} км/ч`;
     $('oBC').innerHTML = `⌂ ${Math.round(home)}м · ${this.fmtT(F.t || 0)}`;
     const heading = -(F.yaw || 0);
+    if (F.train) return this.trainHud(F, pos, heading);
     const alive = F.targets.filter(v => v.alive).map(v => ({v, d:Math.hypot(v.x - pos.x, v.z - pos.z)})).sort((a, b) => a.d - b.d);
     this.compass(heading, alive.slice(0, 1).map(a => Math.atan2(a.v.x - pos.x, -(a.v.z - pos.z))));
     $('oTC').innerHTML = alive.length ? `ЦЕЛЬ: ${alive[0].v.def.name} ${Math.round(alive[0].d)}м · осталось ${alive.length}<br>ВЫЛЕТ ${F.used}/${F.sorties}` : '';
@@ -261,6 +267,19 @@ const UI = {
     if (!this.warnLock) $('warn').innerHTML = w.join('<br>');
     this.updateMarks(1100, pos);
     this.drawMini(pos.x, pos.z, heading, F.targets);
+  },
+  trainHud(F, pos, heading){
+    const g = F.gates[F.gi], n = F.gates.length;
+    $('oTR').innerHTML = `ВОРОТА ${F.gi}/${n}<br>АВАРИЙ ${F.used - 1}`;
+    $('oBC').innerHTML = `⏱ ${F.trainT.toFixed(1)} с${Save.d.bestGate ? ' · рекорд ' + Save.d.bestGate.toFixed(1) : ''}`;
+    $('warn').innerHTML = '';
+    if (!g) return;
+    const d = Math.round(g.pos.distanceTo(pos));
+    this.compass(heading, [Math.atan2(g.pos.x - pos.x, -(g.pos.z - pos.z))]);
+    $('oTC').innerHTML = `СЛЕДУЮЩИЕ ВОРОТА ${d}м`;
+    const v3 = g.pos.clone().project(CAM), on = v3.z < 1 && Math.abs(v3.x) < 1.05 && Math.abs(v3.y) < 1.05;
+    $('marks').innerHTML = on ? `<div class="mk" style="color:#5dff7a;left:${(v3.x + 1) / 2 * innerWidth}px;top:${(1 - v3.y) / 2 * innerHeight}px"><i style="border-color:#5dff7a"></i>${d}м</div>` : '';
+    this.drawMini(pos.x, pos.z, heading, F.gates.map((q, i) => ({x:q.pos.x, z:q.pos.z, alive:i >= F.gi, type:i === F.gi ? 'next' : 'gate'})));
   },
   tankHud(T){
     this.hudT -= 1; if (this.hudT > 0) return; this.hudT = 2;

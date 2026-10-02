@@ -1,35 +1,96 @@
 // ===== Drone / missile mission mode =====
 const BASE = new THREE.Vector3(0, 0, 700);
 const Flight = {
-  start(map, def, wh){
+  start(map, def, wh, opts){
     this.map = map; this.def = def; this.wh = def.warhead ? byId(WARHEADS, def.warhead) : wh;
+    this.train = !!(opts && opts.train);
     W.build(map, 'flight'); FX.init(W.scene);
-    this.targets = W.spawnTargets(map.t, map.camo);
+    this.targets = this.train ? [] : W.spawnTargets(map.t, map.camo);
     this.sorties = map.sorties; this.used = 0; this.coins = 0; this.kills = [];
     this.log = [];
+    if (this.train) this.makeGates();
     UI.buildMarks(this.targets); UI.buildMiniBase();
     this.nextSortie();
   },
+  // ---------- training: fly through 10 gates against the clock ----------
+  makeGates(){
+    const R = mulberry(Date.now() & 0xffff), N = 10;
+    this.gates = []; this.gi = 0; this.trainT = 0;
+    let p = new THREE.Vector3(0, 0, 640), dir = Math.PI; // heading north (-z)
+    for (let i = 0; i < N; i++) {
+      let pos = null;
+      for (let t = 0; t < 40 && !pos; t++) {
+        const d = dir + (R() - 0.5) * 1.3, L = 70 + R() * 50;
+        const c = new THREE.Vector3(p.x + Math.sin(d) * L, 0, p.z + Math.cos(d) * L);
+        if (Math.abs(c.x) > 700 || Math.abs(c.z) > 720) continue;
+        c.y = W.surfaceH(c.x, c.z) + 4 + R() * 16;
+        let ok = true; for (let k = -2; k <= 2 && ok; k++) for (let m = -1; m <= 1 && ok; m++) if (W.collide(new THREE.Vector3(c.x + k * 2, c.y + m * 2.5, c.z + k * 0.5), 1.5)) ok = false;
+        if (ok) { pos = c; dir = d; }
+      }
+      if (!pos) { pos = new THREE.Vector3(p.x, 0, p.z - 80); pos.y = W.surfaceH(pos.x, pos.z) + 12; }
+      const n = new THREE.Vector3(pos.x - p.x, 0, pos.z - p.z).normalize();
+      const g = new THREE.Group(), m = new THREE.MeshBasicMaterial({color:0xff7a1a, fog:false});
+      for (const [w, h, x, y] of [[0.5, 5.6, -3.2, 0], [0.5, 5.6, 3.2, 0], [6.9, 0.5, 0, 2.8], [6.9, 0.5, 0, -2.8]]) part(g, box(w, h, 0.5), m, x, y, 0);
+      g.position.copy(pos); g.rotation.y = Math.atan2(n.x, n.z); W.scene.add(g);
+      this.gates.push({pos, n, g, m}); p = pos;
+    }
+    this.colorGates();
+  },
+  colorGates(){ this.gates.forEach((q, i) => q.m.color.setHex(i < this.gi ? 0x555555 : i === this.gi ? 0x3dff6a : 0xff7a1a)); },
+  checkGates(prev){
+    const g = this.gates[this.gi]; if (!g) return;
+    const a = prev.clone().sub(g.pos).dot(g.n), b = this.pos.clone().sub(g.pos).dot(g.n);
+    if (!(a < 0 && b >= 0)) return;
+    const lat = this.pos.clone().sub(g.pos).addScaledVector(g.n, -b);
+    if (Math.abs(lat.y) < 2.6 && Math.hypot(lat.x, lat.z) < 3.0) {
+      this.gi++; this.colorGates(); Snd.click();
+      if (this.gi >= this.gates.length) return this.finishTrain();
+      UI.big('', `Ворота ${this.gi}/${this.gates.length}`, 0.8);
+    }
+  },
+  finishTrain(){
+    this.phase = 'done'; Snd.setMotor(false, 0); Snd.setStatic(0);
+    const t = this.trainT, crashes = this.used - 1, best = Save.d.bestGate, rec = !best || t < best;
+    if (rec) Save.d.bestGate = t;
+    const stars = crashes === 0 ? 3 : crashes <= 2 ? 2 : 1, coins = 40 + (rec ? 60 : 0);
+    Save.d.coins += coins; Save.save();
+    UI.showResult({win:true, stars, title:rec ? 'Новый рекорд!' : 'Трасса пройдена', rows:[
+      ['Время', t.toFixed(1) + ' с'], ['Рекорд', Save.d.bestGate.toFixed(1) + ' с'], ['Аварий', crashes], ['Награда', `+${coins} монет`]]});
+  },
   nextSortie(){
     const def = this.def;
-    if (this.targets.every(v => !v.alive)) return this.finish(true);
-    if (this.used >= this.sorties) return this.finish(false);
+    if (!this.train) {
+      if (this.targets.every(v => !v.alive)) return this.finish(true);
+      if (this.used >= this.sorties) return this.finish(false);
+    }
     this.used++; this.phase = 'fly'; this.t = 0; this.lostT = 0; this.noise = 0; this.battery = 1; this.mah = 0;
-    const gh = W.groundH(0, 690);
-    this.pos = new THREE.Vector3(rnd(-6, 6), gh + (def.type === 'quad' ? 14 : def.type === 'wing' ? 40 : 3), 688);
-    this.vel = new THREE.Vector3(0, 0, def.type === 'wing' ? -30 : -2);
-    this.yaw = 0; this.pitch = def.type === 'missile' ? 0.06 : 0; this.roll = 0;
-    this.q = new THREE.Quaternion(); this.spd = def.type === 'wing' ? 30 : def.type === 'missile' ? def.speed * 0.4 : 0;
+    // training: respawn just before the next gate, facing it
+    const from = this.train && this.gi > 0 ? this.gates[this.gi - 1].pos : null;
+    const sx = from ? from.x : rnd(-6, 6), sz = from ? from.z : 688, gh = W.surfaceH(sx, sz);
+    this.pos = new THREE.Vector3(sx, from ? Math.max(from.y, gh + 6) : gh + (def.type === 'quad' ? 14 : def.type === 'wing' ? 40 : 3), sz);
+    const nextG = this.train ? this.gates[this.gi] : null;
+    this.yaw = nextG ? Math.atan2(-(nextG.pos.x - sx), -(nextG.pos.z - sz)) : 0;
+    this.vel = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).multiplyScalar(def.type === 'wing' ? 30 : 2);
+    this.pitch = def.type === 'missile' ? 0.06 : 0; this.roll = 0;
+    this.q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.yaw, 0, 'YXZ')); this.spd = def.type === 'wing' ? 30 : def.type === 'missile' ? def.speed * 0.4 : 0;
     const dry = 0.6 + (def.payload || 0) * 0.55, w = def.type === 'missile' ? 0 : this.wh.weight;
     this.twr = def.type === 'quad' ? def.twr * dry / (dry + w) : 1;
     this.vmax = def.type === 'quad' ? def.speed * (0.72 + 0.28 * this.twr / def.twr) : def.type === 'wing' ? def.speed * (1 - w / (def.payload * 6)) : def.speed;
-    this.acro = def.type === 'quad' && Save.d.mode === 'acro';
-    Input.L.keepY = this.acro; Input.L.y = 0; Input.L.x = 0;
-    this.lastIn = {lx:0, ly:0, rx:0, ry:0};
+    this.setQuadMode(Save.d.mode);
+    this.lastIn = {lx:0, ly:Input.L.y, rx:0, ry:0};
     UI.setFilter(this.map.night ? 'thermal' : '');
-    const hint = this.acro && this.used === 1 ? '\nАКРО: левый стик — газ (центр = висение) и поворот, правый — наклон и кувырки' : '';
+    const hint = this.used !== 1 || def.type !== 'quad' ? '' : this.easy
+      ? '\nЛевый стик: вверх — мощность моторов, вбок — поворот. Правый: куда лететь, можно делать кувырки'
+      : this.acro ? '\nАКРО: левый стик — газ (центр = висение) и поворот, правый — наклон и кувырки' : '';
     UI.big(`ВЫЛЕТ ${this.used}/${this.sorties}`, `${def.name} · ${def.type === 'missile' ? 'ракета' : this.wh.name}${hint}`, hint ? 4 : 1.6);
     Snd.click();
+  },
+  // quad flight modes: 'fpv' = simple FPV (flies where the camera looks), 'acro' = real rate-mode physics, 'angle' = self-levelling
+  setQuadMode(m){
+    const quad = this.def.type === 'quad';
+    this.easy = quad && m === 'fpv'; this.acro = quad && (m === 'acro' || m === 'fpv');
+    Input.L.keepY = this.acro; Input.L.x = 0; Input.L.y = this.easy ? -0.4 : 0;
+    if (quad && !this.acro) { const e = new THREE.Euler().setFromQuaternion(this.q, 'YXZ'); this.yaw = e.y; this.pitch = e.x; this.roll = e.z; }
   },
   // ---------- per-frame ----------
   update(dt){
@@ -38,6 +99,7 @@ const Flight = {
     if (this.phase === 'fly') this.fly(dt);
     else if (this.phase === 'lost') { this.fall(dt); this.phaseT -= dt; UI.noise = 1; Snd.setStatic(1); if (this.phaseT <= 0) { Snd.setStatic(0); this.nextSortie(); } }
     else if (this.phase === 'obs') { this.phaseT -= dt; UI.noise = 0.04; this.obsCam(dt); if (this.phaseT <= 0) { UI.setFilter(''); this.nextSortie(); } }
+    else if (this.phase === 'crash') { this.phaseT -= dt; UI.noise = 1; Snd.setStatic(0.6); if (this.phaseT <= 0) { Snd.setStatic(0); this.nextSortie(); } }
     this.updateAA(dt);
     FX.update(dt, CAM); W.updateWeather(CAM, dt);
     if (this.phase === 'fly' || this.phase === 'lost') UI.flightHud(this);
@@ -57,13 +119,25 @@ const Flight = {
     let thr = 0.5;
     const steps = def.type === 'missile' ? 3 : 2, h = dt / steps;
     for (let i = 0; i < steps && this.phase === 'fly'; i++) {
+      const prev = this.pos.clone();
       if (def.type === 'quad') thr = this.stepQuad(h, inp, ag);
       else if (def.type === 'wing') thr = this.stepWing(h, inp, ag);
       else thr = this.stepMissile(h, inp, ag);
+      if (this.train) { this.checkGates(prev); if (this.phase !== 'fly') return; }
       const hit = W.collide(this.pos, 0.25);
       if (hit) { this.impact(hit); return; }
     }
     this.thr = thr;
+    if (this.train) {
+      // training: no battery drain, no jamming — just flying
+      this.trainT += dt; this.noise = 0; UI.noise = 0.04; this.ewNear = 0; this.battery = Math.max(this.battery, def.type === 'missile' ? 0.5 : 1);
+      CAM.position.copy(this.pos); CAM.quaternion.copy(this.q);
+      const up = def.type === 'quad' ? (this.easy ? 0 : this.acro ? 0.38 : 0.14) : 0;
+      CAM.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(up, 0, 0)));
+      if (CAM.fov !== 82) { CAM.fov = 82; CAM.updateProjectionMatrix(); }
+      Snd.setMotor(true, thr, def.type);
+      return;
+    }
     const drain = def.type === 'missile' ? 1 / def.battery : (0.45 + thr * 0.9) / def.battery * (1 + (def.type === 'quad' ? this.wh.weight / (def.payload * 3) : 0));
     this.battery = Math.max(0, this.battery - drain * dt); this.mah += drain * dt * (def.type === 'quad' ? 5200 : 9000);
     this.updateSignal(dt);
@@ -71,18 +145,18 @@ const Flight = {
     CAM.position.copy(this.pos);
     const shk = FX.shake * 0.02;
     CAM.quaternion.copy(this.q);
-    const up = def.type === 'quad' ? (this.acro ? 0.38 : 0.14) : 0;
+    const up = def.type === 'quad' ? (this.easy ? 0 : this.acro ? 0.38 : 0.14) : 0;
     CAM.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(up + rnd(-shk, shk) + (def.type === 'quad' ? Math.sin(this.t * 37) * 0.002 * thr : 0), rnd(-shk, shk), 0)));
     if (CAM.fov !== 82) { CAM.fov = 82; CAM.updateProjectionMatrix(); }
     Snd.setMotor(true, thr, def.type);
   },
   stepQuad(dt, inp, ag){
-    const def = this.def, maxT = 0.62 + 0.38 * ag;
+    const def = this.def, maxT = 0.62 + 0.38 * ag, iv = Save.d.invert ? 1 : -1; // iv=-1: right stick up = nose up
     const bat = this.battery > 0 ? (this.battery < 0.1 ? 0.75 + this.battery * 2.5 : 1) : 0;
     let thrust, thr;
     if (!this.acro) {
       const k = Math.min(1, dt * (5 + ag * 7));
-      this.pitch += (-inp.ry * maxT - this.pitch) * k;
+      this.pitch += (-inp.ry * iv * maxT - this.pitch) * k;
       this.roll += (-inp.rx * maxT - this.roll) * k;
       this.yaw += -inp.lx * (1.6 + ag * 1.6) * dt;
       this.q.setFromEuler(new THREE.Euler(this.pitch, this.yaw, this.roll, 'YXZ'));
@@ -93,9 +167,22 @@ const Flight = {
     } else {
       // Acro (rate mode): sticks set rotation speed in the drone's own axes, nothing self-levels — flips and rolls are possible.
       // Rates with expo like Betaflight: precise near centre, fast at full stick.
-      const maxR = 5.5 + ag * 3.5, expo = 0.55, rc = x => x * (1 - expo) + x * x * x * expo;
-      const w = new THREE.Vector3(-rc(inp.ry) * maxR, -rc(inp.lx) * 3.6, -rc(inp.rx) * maxR), ang = w.length() * dt;
+      const maxR = this.easy ? 2.3 + ag * 1.4 : 5.5 + ag * 3.5, expo = 0.55, rc = x => x * (1 - expo) + x * x * x * expo;
+      const w = new THREE.Vector3(-rc(inp.ry) * iv * maxR, -rc(inp.lx) * (this.easy ? 2.0 : 3.6), -rc(inp.rx) * maxR), ang = w.length() * dt;
       if (ang > 1e-6) this.q.multiply(new THREE.Quaternion().setFromAxisAngle(w.normalize(), ang)).normalize();
+      if (this.easy) {
+        // Simple FPV: the drone flies where the camera looks, left stick sets motor power (bottom = hover in place)
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.q), upv = new THREE.Vector3(0, 1, 0).applyQuaternion(this.q);
+        if (upv.y > 0.2) this.q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), right.y * 1.8 * dt)); // banked turn
+        if (Math.abs(inp.rx) < 0.08 && upv.y > 0.3) this.q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -right.y * 2.2 * dt)); // level the wings when the stick is released
+        thr = clamp((inp.ly + 1) / 2, 0, 1);
+        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.q), target = fwd.multiplyScalar(thr * this.vmax * (this.battery > 0 ? 1 : 0));
+        if (this.battery <= 0) target.y = -12;
+        this.vel.lerp(target, Math.min(1, dt * (1.6 + ag * 1.6)));
+        this.pos.addScaledVector(this.vel, dt);
+        const e = new THREE.Euler().setFromQuaternion(this.q, 'YXZ'); this.yaw = e.y; this.pitch = e.x; this.roll = e.z;
+        return thr;
+      }
       // throttle: stick centre = hover, top = full power, bottom = motors idle
       const hover = clamp(1 / this.twr, 0.15, 0.85);
       thr = inp.ly >= 0 ? hover + (1 - hover) * inp.ly : hover * (1 + inp.ly);
@@ -171,6 +258,12 @@ const Flight = {
   // ---------- impact & damage ----------
   impact(hit){
     Snd.setMotor(false, 0, this.def.type); Snd.setStatic(0);
+    if (this.train) {
+      FX.explosion(this.pos.clone(), 0.4, hit.kind === 'water' ? 'water' : 'air'); Snd.boom(80);
+      this.phase = 'crash'; this.phaseT = 1.3;
+      UI.big('АВАРИЯ', 'Снова у последних ворот', 1.3);
+      return;
+    }
     const res = this.blast(hit, false);
     this.phase = 'obs'; this.phaseT = 3.4; this.obsT = 0; this.impactP = this.pos.clone();
     UI.setFilter('obs');

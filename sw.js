@@ -1,5 +1,5 @@
 // Offline cache: the whole game is saved on the phone on first open
-const CACHE = 'fpv-kamikaze-v5';
+const CACHE = 'fpv-kamikaze-v6';
 const FILES = [
   './', 'index.html', 'manifest.webmanifest', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png',
   'lib/three.min.js', 'data.js', 'audio.js', 'world.js', 'fx.js', 'flight.js', 'tank.js', 'ui.js',

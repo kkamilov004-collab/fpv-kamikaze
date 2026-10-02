@@ -89,10 +89,11 @@ const VEH = {
 
 const Save = {
   d:{coins:300, owned:['osa5','shershen7'], tanks:['rys'], drone:'shershen7', warhead:'heat', tank:'rys', stars:{}, tstars:{},
-     mode:'acro', sens:1, invert:false, sound:true, acroV2:true},
+     mode:'fpv', sens:1, invert:false, sound:true, modeV3:true},
   load(){
     try{ const s = JSON.parse(localStorage.getItem('fpvk_save_v1')||'null'); if(s) Object.assign(this.d, s); }catch(e){}
-    if (!this.d.acroV2) { this.d.mode = 'acro'; this.d.acroV2 = true; } // real FPV flight is now the default
+    // simple FPV (flies where the camera looks, right stick up = up) is now the default for everyone
+    if (!this.d.modeV3) { this.d.mode = 'fpv'; this.d.invert = false; this.d.modeV3 = true; }
   },
   save(){ try{ localStorage.setItem('fpvk_save_v1', JSON.stringify(this.d)); }catch(e){} },
 };
